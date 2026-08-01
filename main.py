@@ -9,6 +9,7 @@ Credentials are read from a .env file (see .env.example). Nothing is hardcoded.
 """
 
 import argparse
+import json
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -113,6 +114,23 @@ def _build_options(cap):
     return options
 
 
+def _print_session_link(driver, label):
+    """Print this session's shareable BrowserStack URLs.
+
+    Read from the live session via browserstack_executor rather than the REST
+    API, because the REST API is not enabled on free plans. `public_url` is the
+    link that can be shared with someone who is not logged in.
+    """
+    try:
+        details = json.loads(
+            driver.execute_script('browserstack_executor: {"action":"getSessionDetails"}')
+        )
+        print(f"[{label}] public link  : {details.get('public_url')}")
+        print(f"[{label}] dashboard    : {details.get('browser_url')}")
+    except Exception as e:
+        print(f"[{label}] could not read session details: {e}")
+
+
 def _run_one(cap):
     user = os.getenv("BROWSERSTACK_USERNAME")
     key = os.getenv("BROWSERSTACK_ACCESS_KEY")
@@ -127,6 +145,7 @@ def _run_one(cap):
             'browserstack_executor: {"action":"setSessionStatus",'
             '"arguments":{"status":"passed","reason":"pipeline completed"}}'
         )
+        _print_session_link(driver, label)
         return (label, "PASSED")
     except Exception as e:
         print(f"[{label}] ERROR: {e}")
@@ -141,7 +160,10 @@ def _run_one(cap):
         return (label, f"FAILED: {e}")
     finally:
         if driver:
-            driver.quit()
+            try:
+                driver.quit()
+            except Exception:
+                pass  # BrowserStack sometimes closes the session right after setSessionStatus
 
 
 def run_browserstack():
